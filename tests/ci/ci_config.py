@@ -182,6 +182,9 @@ CI_CONFIG = {
     "tests_config": {
         # required_build - build name for artifacts
         # force_tests - force success status for tests
+        "Check install packages": {
+            "required_build": "package_release",
+        },
         "Stateful tests (asan)": {
             "required_build": "package_asan",
         },
