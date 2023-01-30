@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
-import atexit
+
+# import atexit
 import logging
-import os
 import sys
 import subprocess
 from pathlib import Path
-from typing import List, Tuple
+
+# from typing import List, Tuple
 
 from github import Github
 
@@ -17,7 +18,7 @@ from clickhouse_helper import (
     mark_flaky_tests,
     prepare_tests_results_for_clickhouse,
 )
-from commit_status_helper import post_commit_status, update_mergeable_check
+from commit_status_helper import post_commit_status  # , update_mergeable_check
 from docker_pull_helper import get_image_with_version, DockerImage
 from env_helper import TEMP_PATH as TEMP, REPORTS_PATH
 from get_robot_token import get_best_robot_token
@@ -33,6 +34,8 @@ from upload_result_helper import upload_results
 RPM_IMAGE = "clickhouse/install-rpm-test"
 DEB_IMAGE = "clickhouse/install-deb-test"
 TEMP_PATH = Path(TEMP)
+SUCCESS = "success"
+FAILURE = "failure"
 
 
 def test_install_deb(image: DockerImage) -> TestResults:
@@ -74,9 +77,9 @@ def test_install(test_name: str, command: str, image: DockerImage) -> TestResult
     with TeePopen(install_command, log_file) as process:
         retcode = process.wait()
         if retcode == 0:
-            status = "success"
+            status = SUCCESS
         else:
-            status = "failure"
+            status = FAILURE
 
     subprocess.check_call(f"docker kill {container_name}", shell=True)
     return TestResult(test_name, status, stopwatch.duration_seconds, [log_file])
@@ -144,25 +147,17 @@ def main():
             args.check_name, REPORTS_PATH, TEMP_PATH, filter_artifacts
         )
 
-    test_reports = test_install_deb(docker_images[DEB_IMAGE])
+    test_results = test_install_deb(docker_images[DEB_IMAGE])
 
     return
 
-    run_log_path = os.path.join(test_output, "run.log")
+    print()  # pylint:disable=unreachable
 
-    logging.info("Going to run func tests: %s", run_command)
-
-    with TeePopen(run_command, run_log_path) as process:
-        retcode = process.wait()
-        if retcode == 0:
-            logging.info("Run successfully")
-        else:
-            logging.info("Run failed")
-
-    subprocess.check_call(f"sudo chown -R ubuntu:ubuntu {TEMP_PATH}", shell=True)
+    state = SUCCESS
+    if FAILURE in (result.status for result in test_results):
+        state = FAILURE
 
     s3_helper = S3Helper()
-    state, description, test_results, additional_logs = process_results(test_output)
 
     ch_helper = ClickHouseHelper()
     mark_flaky_tests(ch_helper, args.check_name, test_results)
@@ -172,10 +167,11 @@ def main():
         pr_info.number,
         pr_info.sha,
         test_results,
-        [run_log_path] + additional_logs,
+        [],
         args.check_name,
     )
     print(f"::notice ::Report url: {report_url}")
+    description = f"Packages installation test: {state}"
     post_commit_status(gh, pr_info.sha, args.check_name, description, state, report_url)
 
     prepared_events = prepare_tests_results_for_clickhouse(
@@ -190,7 +186,7 @@ def main():
 
     ch_helper.insert_events_into(db="default", table="checks", events=prepared_events)
 
-    if state == "failure":
+    if state == FAILURE:
         sys.exit(1)
 
 
