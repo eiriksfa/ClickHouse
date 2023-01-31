@@ -307,7 +307,7 @@ def main(event):
         label = event_data["label"]["name"]
         print("Added label:", label)
 
-    print("PR has labels", label)
+    print("PR has labels", {label["name"] for label in pull_request["labels"]})
     if action == "opened" or (
         action == "labeled" and pull_request["created_at"] == pull_request["updated_at"]
     ):
@@ -315,7 +315,7 @@ def main(event):
         return
 
     if action == "closed" or label == "do not test":
-        print("PR merged/closed or manually labeled 'do not test' will kill workflows")
+        print("PR merged/closed or manually labeled 'do not test', will kill workflows")
         workflow_descriptions = get_workflows_description_for_pull_request(
             pull_request, token
         )
